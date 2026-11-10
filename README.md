@@ -64,4 +64,4 @@ automacoes_n8n/
 Pedro Vignoli, student of Technology in Artificial Intelligence. Main interests: AI, automation and data.
 
 - LinkedIn: [linkedin.com/in/pedro-vignoli-977999427](https://linkedin.com/in/pedro-vignoli-977999427)
-- E-mail: pedro.code@proton.me
+- E-mail: pedro.code@outlook.pt
