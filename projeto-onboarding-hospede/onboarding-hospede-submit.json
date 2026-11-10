@@ -1,0 +1,336 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "sua-empresa-onboarding-submit",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-submit-0001",
+      "name": "Webhook: Recebe Submit",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [0, -416],
+      "webhookId": "sua-empresa-onboarding-submit"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || $input.first().json;\n\nconst reservaId            = body.reserva_id            || '';\nconst tokenOnboarding      = body.token_onboarding      || '';\nconst telefoneTitular      = body.telefone_titular       || '';\nconst nomeTitular          = body.nome_titular           || '';\nconst documentoTitular     = body.documento_titular      || '';\nconst nacionalidadeTitular = body.nacionalidade_titular  || 'Brasileira';\nconst acompanhantesJson    = body.acompanhantes_json     || '[]';\nconst veiculoPlaca         = body.veiculo_placa          || '';\nconst veiculoModelo        = body.veiculo_modelo         || '';\nconst veiculoCor           = body.veiculo_cor            || '';\nconst aceiteIp             = body.aceite_ip              || '';\nconst aceiteUserAgent      = body.aceite_user_agent      || '';\nconst aceiteTimestamp      = body.aceite_timestamp       || new Date().toISOString();\nconst aceiteHash           = body.aceite_hash_contrato   || '';\nconst preenchidoEm         = body.preenchido_em          || new Date().toISOString();\n\n// Formata telefone: +5511999999999 → 5511999999999\nconst telefoneE164 = telefoneTitular.replace(/^\\+/, '');\nconst primeiroNome = nomeTitular.split(' ')[0] || '';\n\nif (!reservaId || !documentoTitular) {\n  throw new Error('Dados obrigatórios ausentes: reserva_id ou documento_titular');\n}\n\nreturn [{ json: {\n  reserva_id:            reservaId,\n  token_onboarding:      tokenOnboarding,\n  telefone_e164:         telefoneE164,\n  primeiro_nome:         primeiroNome,\n  documento_titular:     documentoTitular,\n  nacionalidade_titular: nacionalidadeTitular,\n  acompanhantes_json:    acompanhantesJson,\n  veiculo_placa:         veiculoPlaca,\n  veiculo_modelo:        veiculoModelo,\n  veiculo_cor:           veiculoCor,\n  aceite_ip:             aceiteIp,\n  aceite_user_agent:     aceiteUserAgent,\n  aceite_timestamp:      aceiteTimestamp,\n  aceite_hash_contrato:  aceiteHash,\n  preenchido_em:         preenchidoEm\n} }];"
+      },
+      "id": "code-parse-validar-0001",
+      "name": "Code: Parse e Validar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [224, -416]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "ONBOARDING_HOSPEDES", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reserva_id": "={{ $json.reserva_id }}",
+            "token_onboarding": "={{ $json.token_onboarding }}",
+            "documento_titular": "={{ $json.documento_titular }}",
+            "nacionalidade_titular": "={{ $json.nacionalidade_titular }}",
+            "acompanhantes_json": "={{ $json.acompanhantes_json }}",
+            "veiculo_placa": "={{ $json.veiculo_placa }}",
+            "veiculo_modelo": "={{ $json.veiculo_modelo }}",
+            "veiculo_cor": "={{ $json.veiculo_cor }}",
+            "aceite_ip": "={{ $json.aceite_ip }}",
+            "aceite_user_agent": "={{ $json.aceite_user_agent }}",
+            "aceite_timestamp": "={{ $json.aceite_timestamp }}",
+            "aceite_hash_contrato": "={{ $json.aceite_hash_contrato }}",
+            "preenchido_em": "={{ $json.preenchido_em }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-append-onboarding-0001",
+      "name": "Sheets: Append ONBOARDING_HOSPEDES",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [448, -416],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "reserva_id", "lookupValue": "={{ $('Code: Parse e Validar').item.json.reserva_id }}" }] },
+        "options": {}
+      },
+      "id": "sheets-read-log-0001",
+      "name": "Sheets Read LOG",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [672, -416],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Puxa os dados que o nó \"Sheets Read LOG\" acabou de ler\nconst log = $input.first().json;\nconst dataCheckinRaw = log.data_checkin || '';\n\n// Pega o valor atual de urgência (que deve estar vazio)\nlet urgenciaFinal = log.urgencia || '';\n\nif (dataCheckinRaw) {\n  const hoje = new Date();\n  hoje.setHours(0, 0, 0, 0);\n\n  const checkin = new Date(dataCheckinRaw);\n  checkin.setHours(0, 0, 0, 0);\n\n  const diasRestantes = Math.round((checkin - hoje) / (1000 * 60 * 60 * 24));\n\n  // Se o check-in for HOJE, marcamos como \"urgente\"\n  if (diasRestantes === 0) {\n    urgenciaFinal = 'urgente';\n  }\n}\n\n// Passa adiante os dados originais, forçando a atualização APENAS do campo \"urgencia\"\nreturn [{\n  json: {\n    ...log,\n    urgencia: urgenciaFinal\n  }\n}];"
+      },
+      "id": "code-calcular-urgencia-0001",
+      "name": "Code: Calcular Urgência",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [896, -416]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reserva_id": "={{ $json.reserva_id }}",
+            "status_onboarding": "preenchido",
+            "token_consumido": "TRUE",
+            "urgencia": "={{ $json.urgencia }}",
+            "ultima_atualizacao": "={{ $now.format('dd/MM/yyyy HH:mm:ss') }}"
+          },
+          "matchingColumns": ["reserva_id"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-update-log-status-0001",
+      "name": "Sheets: Update LOG status",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [1120, -416],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-HOSPEDES@group.calendar.google.com", "mode": "list", "cachedResultName": "Cadastro Hóspedes" },
+        "eventId": "={{ $('Sheets Read LOG').item.json.event_id_checkin }}",
+        "updateFields": {
+          "allday": "yes",
+          "description": "=📋 Status: ✅ Preenchido em {{ DateTime.fromISO($('Code: Parse e Validar').first().json.preenchido_em).setLocale('pt-BR').toFormat('dd/MM/yyyy HH:mm') }}\n\n🏠 Unidade: {{ $('Sheets Read LOG').item.json.unidade_nome }}\n🎟️ Reserva: {{ $json.reserva_id }}\n\n👥 HÓSPEDE TITULAR: {{ $('Sheets Read LOG').item.json.hospede_nome }} - Doc: {{ $('Code: Parse e Validar').first().json.documento_titular }} ({{ $('Code: Parse e Validar').first().json.nacionalidade_titular }})\n\n👥 ACOMPANHANTES:\n{{ JSON.parse($('Code: Parse e Validar').first().json.acompanhantes_json || '[]').map((a, i) => `${i+1}. ${a.nome || a.nome_completo || ''} - Doc: ${a.doc || a.documento || ''}`).join('\\n') || '(nenhum)' }}\n\n🚗 Veículo: {{ $('Code: Parse e Validar').first().json.veiculo_modelo }} {{ $('Code: Parse e Validar').first().json.veiculo_cor }} - Placa {{ $('Code: Parse e Validar').first().json.veiculo_placa }}\n\n📞 WhatsApp: https://wa.me/{{ $('Code: Parse e Validar').first().json.telefone_e164 }}",
+          "summary": "={{ $json.canal && $json.canal.includes('airbnb') ? 'A' : $json.canal && $json.canal.includes('booking') ? 'B' : 'O' }} ✅ 🏠 Onboarding | {{ $('Sheets Read LOG').item.json.unidade_nome }} | {{ $json.reserva_id }} | {{ $('Sheets Read LOG').item.json.hospede_nome }}"
+        }
+      },
+      "id": "calendar-update-onboarding-0001",
+      "name": "Update Onboarding",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [1344, -416],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pega o canal da reserva (lido do LOG)\nconst canal = ($('Sheets Read LOG').first().json.canal || '').toLowerCase();\n\n// Se for Airbnb, para aqui e não repassa nada adiante.\nif (canal.includes('airbnb')) {\n  return [];\n}\n\n// Nao é Airbnb, repassa o item sem alterar.\nreturn $input.all();\n"
+      },
+      "id": "filtro-bloqueia-airbnb-0001",
+      "name": "Filtro: Bloqueia Airbnb",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1568, -416]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://seu-dominio-evolution.com/message/sendText/SUA_INSTANCIA",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "apikey", "value": "SUA-API-KEY-AQUI" }] },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "number", "value": "={{ $('Code: Parse e Validar').item.json.telefone_e164 }}" },
+            { "name": "text", "value": "={{ $('Code: Parse e Validar').first().json.primeiro_nome }}, recebemos seu cadastro.\n\nSuas informações foram registradas e sua hospedagem está confirmada.\n\n📩 Um dia antes da sua estadia, às 20h, você receberá aqui pelo chat todas as instruções de acesso e outras informações úteis.\n\n🕗 Nosso horário de atendimento ao hóspede é das 8h00 às 21h00. Fora desse período não temos suporte ao hóspede.\n\n[NOME DA EMPRESA]" },
+            { "name": "delay", "value": "={{ 3000 }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-evolution-agradecimento-0001",
+      "name": "Evolution Agradecimento",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1792, -416]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ ok: true }) }}",
+        "options": {}
+      },
+      "id": "resposta-ok-0001",
+      "name": "Resposta: OK",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [2016, -416]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [{ "id": "cond-urgente", "leftValue": "={{ $('Sheets: Update LOG status').item.json.urgencia }}", "rightValue": "urgente", "operator": { "type": "string", "operation": "equals" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-urgencia-0001",
+      "name": "If: urgência",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [2240, -416]
+    },
+    {
+      "parameters": {
+        "jsCode": "const log = $('Sheets Read LOG').first().json;\n\nconst trim = function(s) { return String(s || '').trim(); };\nconst normalizaData = function(d) { return trim(d).slice(0, 10); };\n\nconst formatarDataBR = function(iso) {\n  var d = normalizaData(iso);\n  if (!d || d.length < 10) return d;\n  return d.slice(8,10) + '/' + d.slice(5,7) + '/' + d.slice(0,4);\n};\n\nreturn [{\n  json: {\n    fluxo:                'checkin',\n    reserva_id:           trim(log.reserva_id),\n    unidade_nome:         trim(log.unidade_nome),\n    primeiro_nome:        trim(log.hospede_nome).split(' ')[0] || 'Hóspede',\n    hospede_nome:         trim(log.hospede_nome),\n    numero_evolution:     trim(log.hospede_id).replace(/^\\+/, ''),\n    data_checkin:         formatarDataBR(log.data_checkin),\n    data_checkout:        formatarDataBR(log.data_checkout),\n    arquivos_para_enviar: ['instrucoes_checkin.md', 'regras.md', 'endereco_e_senhas.md'],\n    flag_envio:           'msg_checkin_enviada'\n  }\n}];"
+      },
+      "id": "code-montar-payload-core-0001",
+      "name": "Code: Montar Payload CORE",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2480, -512]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "SEU-WORKFLOW-ID-JORNADA-HOSPEDE", "mode": "list", "cachedResultName": "Sub-workflow: Jornada do Hóspede" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": {}, "matchingColumns": [], "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": true },
+        "options": {}
+      },
+      "id": "call-jornada-hospede-0001",
+      "name": "Call: Sub-workflow Jornada do Hóspede",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [2704, -512]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            { "id": "cond-urgente-portaria", "leftValue": "={{ $('Sheets: Update LOG status').item.json.urgencia }}", "rightValue": "urgente", "operator": { "type": "string", "operation": "equals" } },
+            { "id": "cond-hora-limite", "leftValue": "={{ $now.setZone('America/Sao_Paulo').hour }}", "rightValue": 12, "operator": { "type": "number", "operation": "gte" } },
+            { "id": "cond-checkin-hoje", "leftValue": "={{ $('Sheets Read LOG').item.json.data_checkin }}", "rightValue": "={{ $today.toFormat('yyyy-MM-dd') }}", "operator": { "type": "dateTime", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-urgencia-portaria-0001",
+      "name": "IF: urgência portaria",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1584, -80]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "CAD_UNIDADES_STAYS", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "unidade_nome", "lookupValue": "={{ $('Sheets Read LOG').first().json.unidade_nome }}" }] },
+        "options": {}
+      },
+      "id": "sheets-busca-portaria-0001",
+      "name": "Sheets: Busca Portaria",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1792, -208],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "ONBOARDING_HOSPEDES", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "reserva_id", "lookupValue": "={{ $('Sheets Read LOG').first().json.reserva_id }}" }] },
+        "options": {}
+      },
+      "id": "sheets-busca-docs-hospede-0001",
+      "name": "Sheets: Busca Docs Hóspede",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [2000, -208],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Dados da reserva (LOG)\nconst log = $('Sheets Read LOG').first().json;\n\n// Dados da portaria (CAD_UNIDADES_STAYS)\nconst u = $('Sheets: Busca Portaria').first().json;\n\n// Dados do onboarding preenchido (ONBOARDING_HOSPEDES)\nconst ob = $('Sheets: Busca Docs Hóspede').first().json;\n\n// Helpers\nfunction norm(s) { return String(s ?? '').trim().toLowerCase(); }\nfunction dataBR(d) {\n  const s = String(d ?? '').trim().slice(0, 10);\n  const p = s.split('-');\n  return p.length === 3 ? `${p[2]}/${p[1]}/${p[0]}` : s;\n}\nfunction soDigitos(s) { return String(s ?? '').replace(/\\D/g, ''); }\nfunction separaUnidade(nome) {\n  const m = String(nome ?? '').trim().match(/^(\\D+?)\\s*(\\d.*)$/);\n  if (m) return { edificio: m[1].trim(), unidade: m[2].trim() };\n  return { edificio: String(nome ?? '').trim(), unidade: '' };\n}\n\nconst { edificio, unidade } = separaUnidade(log.unidade_nome);\nconst portariaId   = soDigitos(u.portaria_id || '');\nconst portariaNome = u.portaria_nome || 'Portaria';\nconst horaIn       = u.hora_checkin  || '';\nconst horaOut      = u.hora_checkout || '';\nconst garagem      = u.garagem       || '';\nconst gSim         = norm(garagem) === 'sim';\n\n// Hóspedes: titular + acompanhantes\nlet acompanhantes = [];\ntry { acompanhantes = JSON.parse(ob.acompanhantes_json || '[]'); } catch(e) {}\n\nconst pessoas = [\n  { nome: log.hospede_nome || '', doc: ob.documento_titular || '' },\n  ...(Array.isArray(acompanhantes) ? acompanhantes : []),\n].filter(p => p.nome || p.doc);\n\nconst listaHospedes = pessoas\n  .map((p, i) => `${i + 1}. ${p.nome}${p.doc ? ' - ' + p.doc : ''}`)\n  .join('\\n');\n\n// Veículo\nconst temPlaca = !!String(ob.veiculo_placa || '').trim();\nconst linhaGaragem = `Vaga de garagem: (${gSim ? 'X' : ' '}) Sim (${gSim ? ' ' : 'X'}) Não`;\nlet blocoVeiculo;\nif (temPlaca) {\n  const desc = [ob.veiculo_modelo, ob.veiculo_cor].filter(Boolean).join(' ');\n  blocoVeiculo = `Veículo autorizado:${desc ? ' ' + desc : ''}\\nPlaca: ${ob.veiculo_placa}`;\n} else {\n  blocoVeiculo = `Veículo autorizado: não informado\\nPlaca: -`;\n}\n\nconst mensagem =\n`⚡ ENTRADA URGENTE — MESMO DIA\n\nPrezados,\n\nInformamos que a unidade ${unidade || log.unidade_nome}, no Edifício ${edificio}, estará locada por temporada no período de ${dataBR(log.data_checkin)} a ${dataBR(log.data_checkout)}, com os seguintes hóspedes autorizados:\n\n👤 Hóspedes autorizados (${pessoas.length} ${pessoas.length === 1 ? 'pessoa' : 'pessoas'})\n\n${listaHospedes}\n\n🕒 Horários da hospedagem\nCheck-in: a partir das ${horaIn}\nCheck-out: até ${horaOut}\n\n🚗 Veículo / Garagem\n${linhaGaragem}\n${blocoVeiculo}\n\nAtenciosamente,\n[NOME DA EMPRESA]`;\n\nreturn [{ json: {\n  numero_portaria: portariaId,\n  mensagem,\n  reserva_id:    log.reserva_id,\n  unidade_nome:  log.unidade_nome,\n  portaria_nome: portariaNome,\n  tem_portaria:  !!portariaId,\n}}];"
+      },
+      "id": "code-montar-msg-portaria-0001",
+      "name": "Code: Montar msg portaria (urgente)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2208, -208]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [{ "id": "cond-tem-portaria", "leftValue": "={{ $json.numero_portaria }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty", "singleValue": true } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-tem-portaria-0001",
+      "name": "If: Tem Contato de Portaria",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [2416, -208]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://seu-dominio-evolution.com/message/sendText/SUA_INSTANCIA",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "apikey", "value": "SUA-API-KEY-AQUI" }] },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            { "name": "number", "value": "={{ $json.numero_portaria }}" },
+            { "name": "text", "value": "={{ $json.mensagem }}" },
+            { "name": "delay", "value": "={{ 3000 }}" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-envia-portaria-0001",
+      "name": "HTTP Request: Envia portaria (urgente)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [2736, -272]
+    }
+  ],
+  "connections": {
+    "Webhook: Recebe Submit": { "main": [[{ "node": "Code: Parse e Validar", "type": "main", "index": 0 }]] },
+    "Code: Parse e Validar": { "main": [[{ "node": "Sheets: Append ONBOARDING_HOSPEDES", "type": "main", "index": 0 }]] },
+    "Sheets: Append ONBOARDING_HOSPEDES": { "main": [[{ "node": "Sheets Read LOG", "type": "main", "index": 0 }]] },
+    "Sheets Read LOG": { "main": [[{ "node": "Code: Calcular Urgência", "type": "main", "index": 0 }]] },
+    "Code: Calcular Urgência": { "main": [[{ "node": "Sheets: Update LOG status", "type": "main", "index": 0 }]] },
+    "Sheets: Update LOG status": { "main": [[{ "node": "Update Onboarding", "type": "main", "index": 0 }]] },
+    "Update Onboarding": {
+      "main": [
+        [
+          { "node": "Filtro: Bloqueia Airbnb", "type": "main", "index": 0 },
+          { "node": "IF: urgência portaria", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filtro: Bloqueia Airbnb": { "main": [[{ "node": "Evolution Agradecimento", "type": "main", "index": 0 }]] },
+    "Evolution Agradecimento": { "main": [[{ "node": "Resposta: OK", "type": "main", "index": 0 }]] },
+    "Resposta: OK": { "main": [[{ "node": "If: urgência", "type": "main", "index": 0 }]] },
+    "If: urgência": { "main": [[{ "node": "Code: Montar Payload CORE", "type": "main", "index": 0 }]] },
+    "Code: Montar Payload CORE": { "main": [[{ "node": "Call: Sub-workflow Jornada do Hóspede", "type": "main", "index": 0 }]] },
+    "IF: urgência portaria": { "main": [[{ "node": "Sheets: Busca Portaria", "type": "main", "index": 0 }]] },
+    "Sheets: Busca Portaria": { "main": [[{ "node": "Sheets: Busca Docs Hóspede", "type": "main", "index": 0 }]] },
+    "Sheets: Busca Docs Hóspede": { "main": [[{ "node": "Code: Montar msg portaria (urgente)", "type": "main", "index": 0 }]] },
+    "Code: Montar msg portaria (urgente)": { "main": [[{ "node": "If: Tem Contato de Portaria", "type": "main", "index": 0 }]] },
+    "If: Tem Contato de Portaria": { "main": [[{ "node": "HTTP Request: Envia portaria (urgente)", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "SEU-INSTANCE-ID-AQUI"
+  }
+}

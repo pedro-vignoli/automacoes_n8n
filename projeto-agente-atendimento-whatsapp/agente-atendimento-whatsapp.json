@@ -1,0 +1,866 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "whatsapp",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -720,
+        448
+      ],
+      "id": "webhook-0001",
+      "name": "Webhook",
+      "webhookId": "SEU-WEBHOOK-ID-AQUI"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.noOp",
+      "typeVersion": 1,
+      "position": [
+        -288,
+        720
+      ],
+      "id": "noop-0001",
+      "name": "Ignora mensagens do próprio bot"
+    },
+    {
+      "parameters": {
+        "content": "conversation\nephimeralMessage\nextendedtextMessage\n\naudioMessage\nimageMessage\nstickerMessage\nvideoMessage",
+        "height": 176,
+        "width": 256
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "position": [
+        -16,
+        720
+      ],
+      "typeVersion": 1,
+      "id": "sticky-0001",
+      "name": "Sticky Note"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        736,
+        208
+      ],
+      "id": "merge-0001",
+      "name": "Merge"
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Nome completo do cliente: {{ ($('Dados').item.json.push_name || 'não informado').replace(/\\.$/, '') }}\nPrimeiro nome do cliente: {{ (($('Dados').item.json.push_name || '').replace(/\\.$/, '').split(' ')[0]) || 'não informado' }}\n\nMensagem do cliente: {{ $json.message }}",
+        "options": {
+          "systemMessage": "=STATUS DA LOJA AGORA: {{\n  (() => {\n    const sp = new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Sao_Paulo' }));\n    const dia = sp.getDay();\n    const h = sp.getHours() + sp.getMinutes() / 60;\n    const aberto = (dia >= 1 && dia <= 5 && h >= 8 && h < 18) || (dia === 6 && h >= 8 && h < 12);\n    return aberto ? 'ABERTA' : 'FECHADA';\n  })()\n}}\n\nData/hora SP: {{ new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo', weekday: 'long', day: '2-digit', month: 'long', hour: '2-digit', minute: '2-digit' }) }}\n\n---\n\nVocê é o atendente virtual de uma oficina mecânica.\n\n**Tom de voz — siga à risca:**\n- Profissional caloroso. Atende como um balconista experiente que conhece o cliente — sério no necessário, gentil sempre, sem brincadeiras forçadas.\n- Sempre \"você\" (nunca \"tu\", \"cara\", \"mano\", \"amigão\", \"parceiro\", \"chefe\").\n- 1 emoji por mensagem (mais na saudação e encerramento). Emojis sutis e de contexto (🔧🚗😊👀💬), não decorativos.\n- PROIBIDAS estas expressões juvenis: \"show\", \"tô\", \"tô na área\", \"tá rolando\", \"manda ver\", \"blz\", \"demorô\", \"fechou\", \"valeu\", \"rolou\", \"rolando\", \"boraaa\", \"irado\", \"massa\", \"top\", \"dahora\".\n- PERMITIDAS contrações naturais discretas: \"tá\" no lugar de \"está\" só ocasionalmente, em frases curtas. Padrão é a forma completa.\n- Mensagens diretas e claras, sem floreios. Frases curtas, no máximo 2-3 por turno.\n\n**Dados da oficina (exemplo — substitua pelos seus):**\n- Endereço: [ENDEREÇO DA OFICINA]\n- Fixo: [TELEFONE DA OFICINA]\n- Horário (só informar quando perguntado): Seg–Sex 8h–18h | Sáb 8h–12h | Dom fechado\n\n**Serviços:** escapamentos, suspensão, freios, amortecedores, correia dentada, embreagem, alinhamento, balanceamento, óleo/filtros, palhetas, lâmpadas, revisão, limpeza de bicos, arrefecimento, farol.\n\n---\n\n## ⛔ REGRA CRÍTICA DE SEGURANÇA (LEIA ANTES DE TUDO)\n\nA ferramenta `avisar_grupo_atendimento` DEVE ser chamada UMA ÚNICA VEZ por atendimento — nem zero, nem duas, exatamente uma. Chamá-la cedo demais envia notificação inválida. Chamá-la duas vezes envia notificação duplicada para a equipe (problema sério). Não chamá-la deixa a equipe sem saber do cliente.\n\n**CHECKLIST ANTES DE CHAMAR A FERRAMENTA** — todos os itens precisam estar marcados:\n\n1. ☐ Já enviei ao cliente pelo menos UMA mensagem de saudação nesta conversa.\n2. ☐ O cliente me descreveu um problema concreto com o veículo (em palavras dele).\n3. ☐ Eu fiz as perguntas de aprofundamento (ETAPA 3) e tenho detalhes do problema (ou cliente disse \"não sei\").\n4. ☐ Eu perguntei marca/modelo/ano do veículo E o cliente respondeu (ou recusou após insistência).\n5. ☐ Eu perguntei sobre previsão de visita (resposta é opcional — \"a confirmar\" vale).\n\nSe TODOS os itens acima estiverem marcados → **CHAME A FERRAMENTA AGORA**, neste turno. É obrigatório. Não adiar.\n\nSe QUALQUER item estiver desmarcado → **NÃO chame a ferramenta**. Continue a coleta no turno atual.\n\n**Regra anti-duplicação:** Se você acabou de chamar `avisar_grupo_atendimento` neste mesmo turno, NÃO chame de novo no mesmo turno. Uma chamada por atendimento é suficiente — a ferramenta já cumpriu sua função e a equipe já foi notificada.\n\nExceções à checklist (únicos casos em que pode chamar fora da ordem):\n- Cliente claramente desiste (\"vou pensar\", \"deixa pra lá\", \"depois eu volto\")\n- Cliente é explicitamente rude/agressivo (xingamentos diretos, acusações)\n\nEm qualquer outro caso, siga a ordem das etapas abaixo.\n\n---\n\n## NOME DO CLIENTE\n\nUse sempre o primeiro nome real em TODAS as mensagens. Se vier vazio ou \"não informado\", use saudações neutras (\"Olá!\", \"Anotado!\"). NUNCA escreva \"cliente\" nem \"[nome]\" literalmente.\n\n---\n\n## FLUXO DE ATENDIMENTO (6 etapas, em ordem)\n\n### ETAPA 1 — Saudação\n\nPrimeira mensagem sempre é uma saudação cordial apresentando a oficina. Não mencione se a loja está aberta ou fechada aqui. Alterne entre algumas variações de saudação.\n\nMesmo que o cliente já tenha descrito TUDO (problema + veículo + data) na primeira mensagem dele, sua primeira resposta ainda é uma saudação que reconhece o que ele disse — NUNCA pule direto para o encerramento.\n\n### ETAPA 2 — Entender o problema\n\nReaja com empatia breve e profissional ao problema (\"Entendo, barulho no escapamento costuma ser bem incômodo mesmo.\"). Se ainda não descreveu, pergunte de forma direta.\n\n### ETAPA 3 — Aprofundar o problema (pré-diagnóstico)\n\nFaça **até 2 perguntas técnicas** sobre o problema, **agrupadas em UMA única mensagem** quando possível. O objetivo é dar à equipe da oficina mais contexto antes do cliente chegar — assim o mecânico já tem uma noção do que pode ser.\n\n**Princípios pra fazer boas perguntas:**\n- **Localização**: \"onde exatamente?\", \"frente, meio ou trás?\", \"em qual roda?\"\n- **Quando aparece**: \"sempre ou só em alguma situação?\", \"ao acelerar, frear, virar?\"\n- **Intensidade/evolução**: \"começou há quanto tempo?\", \"está piorando?\", \"é muito alto ou baixinho?\"\n- **Sintomas associados**: \"sai fumaça?\", \"tem cheiro estranho?\", \"o carro treme?\"\n\n**Linguagem leiga obrigatória.** Cliente não entende termos técnicos. Pergunte de forma simples e direta.\n\n**Se o cliente disser \"não sei\" / \"não reparei\" / \"só sei que faz barulho\":**\nAceita tranquilo, NÃO insiste. Anota mentalmente que cliente \"não soube detalhar\" e segue pra ETAPA 4. Sem atrito.\n\n### ETAPA 4 — Identificar o veículo\n\n\"Me passa a marca, modelo e ano do carro, [nome]?\"\n\nSe resistir, insista UMA vez. Se continuar sem informar, siga com \"não informado\".\n\n### ETAPA 5 — Previsão de visita (opcional)\n\n\"Você já tem ideia de quando consegue trazer o carro, [nome]?\" Se não souber, use \"a confirmar\".\n\n### ETAPA 6 — Encerramento (chame a tool 1 ÚNICA VEZ)\n\nQuando chegar aqui com o checklist completo, execute em 2 passos no MESMO turno:\n\n**Passo 1 — chame `avisar_grupo_atendimento` agora (1 vez SÓ)** com nome do cliente, veículo, resumo do problema, detalhes da ETAPA 3 e previsão de visita.\n\n**Como preencher o campo \"Detalhes\":**\n- Resuma em 1-2 frases curtas o que o cliente respondeu na ETAPA 3, em linguagem direta.\n- Se cliente não soube responder: \"Cliente não soube detalhar — avaliar na visita.\"\n\nApós essa chamada, prossiga DIRETO para o Passo 2 no mesmo turno — NÃO chame a ferramenta de novo.\n\n**Passo 2 — envie ao cliente uma confirmação de que o atendimento foi registrado, com endereço/horário/telefone conforme o status da loja (aberta/fechada).**\n\n---\n\n## Casos especiais\n\n- **Desiste** (\"vou pensar\", \"deixa pra lá\"): chame a tool 1 vez SÓ, registrando a desistência. Depois encerre cordial.\n- **Rude/agressivo** (xingamento direto, acusação): chame a tool 1 vez SÓ IMEDIATAMENTE sinalizando necessidade de humano. Depois peça desculpas pelo desconforto.\n- **Pergunta técnica pura**: responda breve e redirecione para a visita. NÃO chame a tool se o cliente só tira dúvida sem querer agendar.\n- **Preço/orçamento/prazo**: nunca invente. Informe que valor e prazo certos só a equipe passa na avaliação.\n- **Serviço fora da lista**: confirme com a equipe antes de responder.\n- **\"Você é robô?\"**: assuma que é o assistente virtual da oficina.\n- **Mídia (áudio/foto/vídeo)**: tratada fora do agente.\n- **Após encerramento**: responda natural. NÃO chame a tool de novo.\n\n---\n\n## Regras inegociáveis\n\n- Nunca invente preços, prazos ou informações fora deste prompt.\n- Nunca prometa horário exato nem que alguém vai ligar.\n- Nunca peça WhatsApp (o sistema já tem).\n- A ferramenta `avisar_grupo_atendimento` é chamada EXATAMENTE UMA VEZ por atendimento, no momento do encerramento.\n- Na ETAPA 3, se o cliente não souber responder, NÃO insista.\n- Mantenha o tom profissional caloroso em TODAS as mensagens.",
+          "maxIterations": 20
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3,
+      "position": [
+        976,
+        224
+      ],
+      "id": "agent-0001",
+      "name": "AI Agent"
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "value": "gpt-4o-mini",
+          "mode": "list",
+          "cachedResultName": "gpt-4o-mini"
+        },
+        "responsesApiEnabled": false,
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1.3,
+      "position": [
+        880,
+        400
+      ],
+      "id": "openai-model-0001",
+      "name": "OpenAI Chat Model",
+      "credentials": {
+        "openAiApi": {
+          "id": "SUA-CREDENCIAL-AQUI",
+          "name": "SUA_CONTA_OPENAI"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "sessionIdType": "customKey",
+        "sessionKey": "={{ $('Dados').item.json.remoteJid }}",
+        "contextWindowLength": 10
+      },
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.3,
+      "position": [
+        1040,
+        464
+      ],
+      "id": "memory-0001",
+      "name": "Simple Memory"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "assign-0001",
+              "name": "Instancia",
+              "value": "={{ $json.body.instance }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0002",
+              "name": "remoteJid",
+              "value": "={{ $json.body.data.key.remoteJid }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0003",
+              "name": "fromme",
+              "value": "={{ $json.body.data.key.fromMe }}",
+              "type": "boolean"
+            },
+            {
+              "id": "assign-0004",
+              "name": "push_name",
+              "value": "={{ $json.body.data.pushName }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0005",
+              "name": "conversation",
+              "value": "={{ $json.body.data.message.conversation }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0006",
+              "name": "messageType",
+              "value": "={{ $json.body.data.messageType }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0007",
+              "name": "date_time",
+              "value": "={{ $json.body.date_time }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0008",
+              "name": "executionMode",
+              "value": "={{ $json.executionMode }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0009",
+              "name": "server_url",
+              "value": "={{ $json.body.server_url }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0010",
+              "name": "apikey",
+              "value": "={{ $json.body.apikey }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0011",
+              "name": "ephemeralText",
+              "value": "={{ $json.body.data.message?.ephemeralMessage?.message?.extendedTextMessage?.text }}",
+              "type": "string"
+            },
+            {
+              "id": "assign-0012",
+              "name": "extendedText",
+              "value": "={{ $json.body.data.message?.extendedTextMessage?.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -512,
+        448
+      ],
+      "id": "dados-0001",
+      "name": "Dados"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "editfields-0001",
+              "name": "mensagem",
+              "value": "={{ $json.output.replace(/\\[Used tools?:[\\s\\S]*?\\]\\]/g, '').replace(/^\\s*Used tools?:[\\s\\S]*?\\]\\s*/g, '').trim() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1328,
+        224
+      ],
+      "id": "editfields-node-0001",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if-0001",
+              "leftValue": "={{ $json.fromme }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -336,
+        448
+      ],
+      "id": "message-node-0001",
+      "name": "message"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "leftValue": "={{ $json.messageType }}",
+                    "rightValue": "conversation",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    },
+                    "id": "switch-0001"
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "conversation"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "switch-0002",
+                    "leftValue": "={{ $json.messageType }}",
+                    "rightValue": "ephemeralMessage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "epheralMessage"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "switch-0003",
+                    "leftValue": "={{ $json.messageType }}",
+                    "rightValue": "extendedTextMessage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "extendedtextMessage"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "switch-0004",
+                    "leftValue": "={{ $json.messageType }}",
+                    "rightValue": "audioMessage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "audioMessage"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "switch-0005",
+                    "leftValue": "={{ $json.messageType }}",
+                    "rightValue": "imageMessage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "imageMessage"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "switch-0006",
+                    "leftValue": "={{ $json.messageType }}",
+                    "rightValue": "stickerMessage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "stickerMessage"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict",
+                  "version": 3
+                },
+                "conditions": [
+                  {
+                    "id": "switch-0007",
+                    "leftValue": "={{ $json.messageType }}",
+                    "rightValue": "videoMessage",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "videoMessage"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.4,
+      "position": [
+        16,
+        352
+      ],
+      "id": "switch-node-0001",
+      "name": "tipos de mensagem"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "text-0001",
+              "name": "message",
+              "value": "={{ $item(\"0\").$node[\"tipos de mensagem\"].json[\"conversation\"] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        432,
+        64
+      ],
+      "id": "text-node-0001",
+      "name": "text"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "text2-0001",
+              "name": "message",
+              "value": "={{ $item(\"0\").$node[\"tipos de mensagem\"].json[\"ephemeralText\"] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        432,
+        224
+      ],
+      "id": "text2-node-0001",
+      "name": "text 2"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "text3-0001",
+              "name": "message",
+              "value": "={{ $item(\"0\").$node[\"tipos de mensagem\"].json[\"extendedText\"] }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        432,
+        400
+      ],
+      "id": "text3-node-0001",
+      "name": "text 3"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        2000,
+        656
+      ],
+      "id": "merge-node-0002",
+      "name": "merge"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Dados').item.json.server_url }}/message/sendText/{{ $('Dados').item.json.Instancia }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Dados').item.json.apikey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $('Dados').item.json.remoteJid }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.mensagem }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        2320,
+        656
+      ],
+      "id": "envio-0001",
+      "name": "envio da mensagem"
+    },
+    {
+      "parameters": {
+        "toolDescription": "Registra o atendimento do cliente para a equipe interna da oficina.\n\n## 🚫 NÃO chame esta ferramenta se qualquer uma destas condições for verdadeira:\n\n- É o primeiro turno da conversa com este cliente.\n- Você ainda não enviou nenhuma mensagem de saudação nesta conversa.\n- Você não tem o problema descrito pelo cliente em palavras dele.\n- Você não perguntou marca/modelo/ano do veículo OU ainda está esperando resposta.\n- O cliente está só tirando uma dúvida técnica sem interesse em visitar.\n- Você já chamou esta ferramenta antes nesta conversa.\n\nSe alguma condição se aplica → não chame, continue coletando.\n\n## ✅ Quando chamar\n\nApenas quando NENHUM bloqueio acima se aplica, em 3 cenários: encerramento normal (após coletar tudo), cliente que desiste, ou cliente explicitamente hostil (não confundir com impaciente).\n\n## Parâmetros\n\n- `nome_cliente` (string): primeiro nome.\n- `mensagem` (string): resumo curto do atendimento.\n- `numero_cliente`: NÃO passar.",
+        "method": "POST",
+        "url": "={{ $('Dados').item.json.server_url }}/message/sendText/{{ $('Dados').item.json.Instancia }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Dados').item.json.apikey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "SEU-GRUPO-WHATSAPP-AQUI@g.us"
+            },
+            {
+              "name": "text",
+              "value": "=\n*Cliente:* {{ $fromAI('nome_cliente', 'Nome completo do cliente', 'string') }}\n*Número:* {{ $('Dados').item.json.remoteJid.replace('@s.whatsapp.net', '').replace(/(\\d{2})(\\d{2})(\\d{5})(\\d{4})/, '$1 $2 $3-$4') }}\n*Mensagem:* {{ $fromAI('mensagem', 'Resumo curto do que o cliente queria, SEM aspas e SEM colocar o nome do cliente', 'string') }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequestTool",
+      "typeVersion": 4.3,
+      "position": [
+        1200,
+        416
+      ],
+      "id": "tool-0001",
+      "name": "avisar_grupo_atendimento"
+    },
+    {
+      "parameters": {
+        "numberInputs": 4
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        416,
+        640
+      ],
+      "id": "merge-node-0003",
+      "name": "Merge1"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "response-0001",
+              "name": "mensagem",
+              "value": "=Opa{{ (($('Dados').item.json.push_name || '').replace(/\\.$/, '').split(' ')[0]) ? ' ' + (($('Dados').item.json.push_name || '').replace(/\\.$/, '').split(' ')[0]) : '' }}! 😅 Por aqui consigo entender só mensagens de texto. Me descreve rapidinho o que está rolando com seu carro que a gente resolve.",
+              "type": "string"
+            }
+          ]
+        },
+        "includeOtherFields": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        864,
+        672
+      ],
+      "id": "response-node-0001",
+      "name": "Response"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Dados').item.json.server_url }}/message/sendText/{{ $('Dados').item.json.Instancia }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Dados').item.json.apikey }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "SEU-GRUPO-WHATSAPP-AQUI@g.us"
+            },
+            {
+              "name": "text",
+              "value": "=*Cliente:* {{ $('Dados').item.json.push_name }}\n*Número:* {{ $('Dados').item.json.remoteJid.replace('@s.whatsapp.net', '').replace(/(\\d{2})(\\d{2})(\\d{5})(\\d{4})/, '$1 $2 $3-$4') }}\n*Mensagem:* ⚠️ Cliente mandou mídia (áudio/imagem/vídeo/figurinha), atendimento automático não consegue processar"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        1408,
+        784
+      ],
+      "id": "http-0001",
+      "name": "HTTP Request"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "if2-0001",
+              "leftValue": "={{ Object.values($json)[0] }}",
+              "rightValue": 3,
+              "operator": {
+                "type": "number",
+                "operation": "gte"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "looseTypeValidation": true,
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        1136,
+        800
+      ],
+      "id": "if2-node-0001",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "key": "=midia_count:{{ $('Dados').item.json.remoteJid }}:{{ new Date().toLocaleDateString('en-CA', { timeZone: 'America/Sao_Paulo' }) }}"
+      },
+      "type": "n8n-nodes-base.redis",
+      "typeVersion": 1,
+      "position": [
+        1600,
+        784
+      ],
+      "id": "redis-0001",
+      "name": "Redis1",
+      "credentials": {
+        "redis": {
+          "id": "SUA-CREDENCIAL-REDIS-AQUI",
+          "name": "SUA_CONTA_REDIS"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          { "node": "Dados", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          { "node": "AI Agent", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "AI Agent": {
+      "main": [
+        [
+          { "node": "Edit Fields", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "OpenAI Chat Model": {
+      "ai_languageModel": [
+        [
+          { "node": "AI Agent", "type": "ai_languageModel", "index": 0 }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          { "node": "AI Agent", "type": "ai_memory", "index": 0 }
+        ]
+      ]
+    },
+    "Dados": {
+      "main": [
+        [
+          { "node": "message", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          { "node": "merge", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "message": {
+      "main": [
+        [
+          { "node": "tipos de mensagem", "type": "main", "index": 0 }
+        ],
+        [
+          { "node": "Ignora mensagens do próprio bot", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "tipos de mensagem": {
+      "main": [
+        [ { "node": "text", "type": "main", "index": 0 } ],
+        [ { "node": "text 2", "type": "main", "index": 0 } ],
+        [ { "node": "text 3", "type": "main", "index": 0 } ],
+        [ { "node": "Merge1", "type": "main", "index": 0 } ],
+        [ { "node": "Merge1", "type": "main", "index": 1 } ],
+        [ { "node": "Merge1", "type": "main", "index": 2 } ],
+        [ { "node": "Merge1", "type": "main", "index": 3 } ]
+      ]
+    },
+    "text": {
+      "main": [
+        [ { "node": "Merge", "type": "main", "index": 0 } ]
+      ]
+    },
+    "text 2": {
+      "main": [
+        [ { "node": "Merge", "type": "main", "index": 1 } ]
+      ]
+    },
+    "text 3": {
+      "main": [
+        [ { "node": "Merge", "type": "main", "index": 2 } ]
+      ]
+    },
+    "merge": {
+      "main": [
+        [ { "node": "envio da mensagem", "type": "main", "index": 0 } ]
+      ]
+    },
+    "avisar_grupo_atendimento": {
+      "ai_tool": [
+        [ { "node": "AI Agent", "type": "ai_tool", "index": 0 } ]
+      ]
+    },
+    "Merge1": {
+      "main": [
+        [ { "node": "Response", "type": "main", "index": 0 } ]
+      ]
+    },
+    "Response": {
+      "main": [
+        [
+          { "node": "merge", "type": "main", "index": 1 },
+          { "node": "If", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "HTTP Request": {
+      "main": [
+        [ { "node": "Redis1", "type": "main", "index": 0 } ]
+      ]
+    },
+    "If": {
+      "main": [
+        [ { "node": "HTTP Request", "type": "main", "index": 0 } ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "SEU-INSTANCE-ID-AQUI"
+  }
+}

@@ -1,0 +1,869 @@
+{
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "sua-empresa-limpeza-stays", "options": {} },
+      "id": "webhook-0001",
+      "name": "Webhook: Recebe Stays",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [-1088, -464],
+      "webhookId": "sua-empresa-limpeza-stays"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body    = $input.first().json.body;\nconst action  = body.action  || '';\nconst payload = body.payload || {};\n\nconst _id       = payload._id             || '';\nconst type      = payload.type            || '';\nconst reservaId = payload.id              || '';\nconst idclient  = payload._idclient       || '';\nconst guests    = payload.guests          || 0;\nconst price     = payload.price?._f_total || '';\nconst canal     = payload.partner?.name   || '';\nconst codCanal  = payload.partnerCode     || '';\nconst now       = new Date().toLocaleString('pt-BR', { timeZone: 'America/Sao_Paulo' });\n\n// FIX: se houver unidade filho, priorizar dados dela\nconst child     = (payload.childs && payload.childs.length > 0) ? payload.childs[0] : null;\nconst idlisting = child?._idlisting   || payload._idlisting   || '';\nconst checkIn   = child?.checkInDate  || payload.checkInDate  || payload.from || '';\nconst checkOut  = child?.checkOutDate || payload.checkOutDate || payload.to   || '';\n\nconst lista       = payload.guestsDetails?.list || [];\nconst primary     = lista.find(g => g.primary) || lista[0] || {};\nconst hospedeName = primary.name             || '';\nconst hospedeFone = primary.phones?.[0]?.iso || '';\n\n// newStatus deriva do estado atual da reserva (payload.type).\n// Exceção: reservation.deleted não carrega type no payload, então mapeia pelo action.\n// Qualquer type fora do esperado retorna '' — sem fallback silencioso.\nconst typeStatusMap = {\n  'booked': 'reservado',\n  'reserved': 'pre',\n  'blocked':  'bloqueado',\n  'canceled': 'cancelada',\n};\nconst newStatus = action === 'reservation.deleted'\n  ? 'deletada'\n  : (typeStatusMap[type] || '');\n\nreturn [{ \n  json: {\n    _id, action, type, reservaId, idlisting,\n    checkIn, checkOut, guests, price, idclient,\n    canal, codCanal, hospedeName, hospedeFone, newStatus, now\n  } \n}];"
+      },
+      "id": "code-parse-0001",
+      "name": "Code: Parse Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-864, -464]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 },
+          "conditions": [
+            { "id": "cond-ignore-test", "leftValue": "={{ $json.action }}", "rightValue": "test.hook", "operator": { "type": "string", "operation": "notEquals" } },
+            { "id": "cond-ignore-maintenance", "leftValue": "={{ $json.type }}", "rightValue": "maintenance", "operator": { "type": "string", "operation": "notEquals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-ignorar-0001",
+      "name": "IF: Ignorar",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [-640, -464]
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-created", "leftValue": "={{ $json.action }}", "rightValue": "reservation.created", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "created" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-modified", "leftValue": "={{ $json.action }}", "rightValue": "reservation.modified", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "modified" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-deleted", "leftValue": "={{ $json.action }}", "rightValue": "reservation.deleted", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "deleted" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-canceled", "leftValue": "={{ $json.action }}", "rightValue": "reservation.canceled", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "canceled" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-requested", "leftValue": "={{ $json.action }}", "rightValue": "reservation.requested", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "requested" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-reactivated", "leftValue": "={{ $json.action }}", "rightValue": "reservation.reactivated", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "reactivated" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-roteamento-0001",
+      "name": "Switch: Roteamento",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [-384, -608]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "CAD_UNIDADES_STAYS", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "_idlisting", "lookupValue": "={{ $json.idlisting }}" }] },
+        "options": {}
+      },
+      "id": "sheets-unidade-created-0001",
+      "name": "Sheets: Buscar Unidade (Created)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-80, -1088],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } },
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed  = $('Code: Parse Payload').first().json;\nconst unidade = $input.first().json;\n\nconst unidadeNome = unidade.unidade_nome || parsed.idlisting;\nconst equipeId    = unidade.equipe_id    || '';\nconst horaLimpeza = unidade.hora_limpeza || '';\n\nreturn [{ json: {\n  reserva_id:            parsed.reservaId,\n  unidade_nome:          unidadeNome,\n  data_checkin:          parsed.checkIn,\n  data_checkout:         parsed.checkOut,\n  atencao:               '',\n  hora_limpeza_agendada: horaLimpeza,\n  equipe_id:             equipeId,\n  status:                parsed.newStatus,\n  hospede_nome:          parsed.hospedeName,\n  hospede_id:            parsed.hospedeFone,\n  hospede_qtd:           parsed.guests,\n  cod_canal:             parsed.codCanal,\n  canal:                 parsed.canal,\n  valor_total:           parsed.price,\n  hora_checkin:          unidade.hora_checkin  || '',\n  hora_checkout:         unidade.hora_checkout || '',\n  criado_em:             parsed.now,\n  ultima_atualizacao:    parsed.now,\n  _id:                   parsed._id\n} }];"
+      },
+      "id": "code-montar-linha-0001",
+      "name": "Code: Montar Linha Nova",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [144, -1088]
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reserva_id": "={{ $json.reserva_id }}",
+            "unidade_nome": "={{ $json.unidade_nome }}",
+            "data_checkin": "={{ $json.data_checkin }}",
+            "data_checkout": "={{ $json.data_checkout }}",
+            "hora_limpeza_agendada": "={{ $json.hora_limpeza_agendada }}",
+            "equipe_id": "={{ $json.equipe_id }}",
+            "hospede_nome": "={{ $json.hospede_nome }}",
+            "hospede_qtd": "={{ $json.hospede_qtd }}",
+            "cod_canal": "={{ $json.cod_canal }}",
+            "canal": "={{ $json.canal }}",
+            "criado_em": "={{ $json.criado_em }}",
+            "ultima_atualizacao": "={{ $json.ultima_atualizacao }}",
+            "atenção": "={{ $json.atencao }}",
+            "hospede_id": "={{ $json.hospede_id }}",
+            "_id": "={{ $json._id}}",
+            "status": "={{ $json.status }}",
+            "valor_total": "={{ $json.valor_total }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-append-log-0001",
+      "name": "Sheets: Append LOG",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [368, -1088],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-created-reservado", "leftValue": "={{ $('Code: Montar Linha Nova').item.json.status }}", "rightValue": "reservado", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "reservado" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-created-pre", "leftValue": "={{ $('Code: Montar Linha Nova').item.json.status }}", "rightValue": "pre", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "pre" },
+            { "conditions": { "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 1 }, "conditions": [{ "id": "sw-created-bloqueado", "leftValue": "={{ $('Code: Montar Linha Nova').item.json.status }}", "rightValue": "bloqueado", "operator": { "type": "string", "operation": "equals" } }], "combinator": "and" }, "renameOutput": true, "outputKey": "bloqueado" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "switch-status-created-0001",
+      "name": "Switch: Status (Created)",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3,
+      "position": [576, -1104]
+    },
+    {
+      "parameters": {
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-HOSPEDES@group.calendar.google.com", "mode": "list", "cachedResultName": "Cadastro Hóspedes" },
+        "start": "={{ $('Code: Montar Linha Nova').item.json.data_checkin }}",
+        "end": "={{ $('Code: Montar Linha Nova').item.json.data_checkin }}",
+        "additionalFields": {
+          "allday": "yes",
+          "description": "=📋 Status: ⏳ Aguardando preenchimento\n\n🏠 Unidade: {{ $json.unidade_nome }}\n🎟️ Reserva: {{ $json.reserva_id }}\n👥 Hóspedes esperados: {{ $json.hospede_qtd }}\n📞 WhatsApp: https://wa.me/{{ $json.hospede_id.replace('+', '') }}",
+          "summary": "={{ ($('Code: Montar Linha Nova').item.json.canal || '').toLowerCase().includes('airbnb') ? 'A' : ($('Code: Montar Linha Nova').item.json.canal || '').toLowerCase().includes('booking') ? 'B' : 'O' }} 🏠 Onboarding | {{ $('Code: Montar Linha Nova').item.json.unidade_nome }} | {{ $('Code: Montar Linha Nova').item.json.reserva_id }} | {{ $('Code: Montar Linha Nova').item.json.hospede_nome }}"
+        }
+      },
+      "id": "calendar-create-checkin-0001",
+      "name": "Calendar: Create Checkin",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [880, -1312],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": { "jsCode": "return $input.all().map(item => ({\n  json: {\n    ...item.json,\n    event_id_checkin: item.json.id\n  }\n}));" },
+      "id": "code-captura-checkin-0001",
+      "name": "Code: Captura Checkin ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, -1312]
+    },
+    {
+      "parameters": {
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-LIMPEZA@group.calendar.google.com", "mode": "list", "cachedResultName": "Limpeza Tarefas" },
+        "start": "={{ $('Code: Montar Linha Nova').item.json.data_checkout }}",
+        "end": "={{ $('Code: Montar Linha Nova').item.json.data_checkout }}",
+        "additionalFields": {
+          "allday": "yes",
+          "description": "=🧹 Prestador: {{ $('Code: Montar Linha Nova').item.json.equipe_id }}\n🏠 Unidade: {{ $('Code: Montar Linha Nova').item.json.unidade_nome }}\n📅 Data da Limpeza: {{ DateTime.fromISO($('Code: Montar Linha Nova').item.json.data_checkout).setLocale('pt-BR').toFormat('dd \\'de\\' MMM \\'de\\' yyyy') }}\n🕗 Horário: {{ $('Code: Montar Linha Nova').item.json.hora_limpeza_agendada }}\n📞 WhatsApp Prestador: https://wa.me/{{ $('Code: Montar Linha Nova').item.json.equipe_id }}\n\n{{ ($('Code: Montar Linha Nova').item.json.atencao && $('Code: Montar Linha Nova').item.json.atencao !== \"\") ? \"⚠️ ATENÇÃO: Limpeza com turnover!\" : \"\" }}",
+          "summary": "={{ ($('Code: Montar Linha Nova').item.json.atencao && $('Code: Montar Linha Nova').item.json.atencao !== '') ? '⚠️ ' : '' }}🧹 Limpeza | {{ $('Code: Montar Linha Nova').item.json.unidade_nome }} | {{ $('Code: Montar Linha Nova').item.json.reserva_id }} | {{ $('Code: Montar Linha Nova').item.json.hospede_nome }}"
+        }
+      },
+      "id": "calendar-create-checkout-0001",
+      "name": "Calendar: Create Checkout",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [1344, -1312],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": { "jsCode": "return $input.all().map(item => ({\n  json: {\n    ...item.json,\n    event_id_checkout: item.json.id\n  }\n}));" },
+      "id": "code-captura-checkout-0001",
+      "name": "Code: Captura Checkout ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1568, -1312]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reserva_id": "={{ $('Code: Montar Linha Nova').item.json.reserva_id }}",
+            "event_id_checkin": "={{ $('Code: Captura Checkin ID').item.json.id }}",
+            "event_id_checkout": "={{ $json.id }}",
+            "ultima_atualizacao": "={{ $now.format('dd/MM/yyyy HH:mm:ss') }}"
+          },
+          "matchingColumns": ["reserva_id"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-update-eventids-0001",
+      "name": "Sheets: Update Event IDs",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [1792, -1312],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            { "id": "cond-nao-airbnb", "leftValue": "={{ $('Sheets: Append LOG').item.json.canal.toLowerCase() }}", "rightValue": "airbnb", "operator": { "type": "string", "operation": "notContains" } },
+            { "id": "cond-nao-bloqueado", "leftValue": "={{ $('Sheets: Append LOG').item.json.status }}", "rightValue": "bloqueado", "operator": { "type": "string", "operation": "notEquals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-canal-nao-airbnb-0001",
+      "name": "IF: Canal não é Airbnb",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [2016, -1312]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Code: Parse Payload').first().json;\nconst log    = $('Code: Montar Linha Nova').first().json;\n\nfunction uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {\n    const r = Math.random() * 16 | 0;\n    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);\n  });\n}\n\nconst token = uuidv4().split('-')[0];\n\nconst expira = new Date(parsed.checkOut);\nexpira.setDate(expira.getDate() + 30);\nconst tokenExpiraEm = expira.toISOString().split('T')[0];\n\nconst link = `https://seu-dominio-onboarding.com/onboarding/${token}`;\n\nreturn [{ json: {\n  reserva_id:        log.reserva_id,\n  token_onboarding:  token,\n  token_expira_em:   tokenExpiraEm,\n  link_onboarding:   link,\n  status_onboarding: 'pendente',\n  token_consumido:   false\n} }];"
+      },
+      "id": "code-gerar-token-0001",
+      "name": "Code: Gerar Token Onboarding (não-Airbnb)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2256, -1600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed = $('Code: Parse Payload').first().json;\nconst log    = $('Code: Montar Linha Nova').first().json;\n\n// Para Airbnb, o token reaproveita o código do canal (evita gerar 2 links diferentes)\nconst codCanal = (log.cod_canal || '').trim();\nif (!codCanal) return [];\n\nconst token = codCanal;\nconst expira = new Date(parsed.checkOut);\nexpira.setDate(expira.getDate() + 30);\nconst tokenExpiraEm = expira.toISOString().split('T')[0];\nconst link = `https://seu-dominio-onboarding.com/onboarding/${token}`;\n\nreturn [{ json: {\n  reserva_id:        log.reserva_id,\n  token_onboarding:  token,\n  token_expira_em:   tokenExpiraEm,\n  link_onboarding:   link,\n  status_onboarding: 'pendente',\n  token_consumido:   false\n} }];"
+      },
+      "id": "code-gerar-token-airbnb-0001",
+      "name": "Code: Gerar Token Onboarding (Airbnb)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2256, -1296]
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reserva_id": "={{ $json.reserva_id }}",
+            "token_onboarding": "={{ $json.token_onboarding }}",
+            "token_expira_em": "={{ $json.token_expira_em }}",
+            "link_onboarding": "={{ $json.link_onboarding }}",
+            "status_onboarding": "={{ $json.status_onboarding }}",
+            "token_consumido": "={{ $json.token_consumido }}",
+            "ultima_atualizacao": "={{ $now.format('dd/MM/yyyy HH:mm:ss') }}"
+          },
+          "matchingColumns": ["reserva_id"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-update-log-onboarding-0001",
+      "name": "Sheets: Update LOG Onboarding",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [2496, -1600],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "const log   = $('Code: Montar Linha Nova').first().json;\nconst token = $('Code: Gerar Token Onboarding (não-Airbnb)').first().json;\n\nconst primeiroNome = log.hospede_nome.split(' ')[0];\nconst telefone = log.hospede_id.replace('+', '');\n\nfunction formatarData(str) {\n  const d = new Date(str);\n  return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });\n}\nconst dataCheckin = formatarData(log.data_checkin);\nconst dataCheckout = formatarData(log.data_checkout);\n\nconst mensagem = `Olá, ${primeiroNome}! 👋 Sua reserva está confirmada. Seja bem-vindo(a)! 😊\n\n🏠 *Unidade:* ${log.unidade_nome}\n🎟️ *Reserva:* ${log.reserva_id}\n📅 *Check-in:* ${dataCheckin}\n⏰ *Horário:* após às ${log.hora_checkin}\n📅 *Check-out:* ${dataCheckout}\n⏰ *Horário:* até às ${log.hora_checkout}\n\nPara garantirmos o acesso à hospedagem, clique no link abaixo e preencha os dados de todos os hóspedes, incluindo os seus:\n\n🔗 ${token.link_onboarding}\n\n⚠️ *O preenchimento deve ser feito até às 20h30 do dia do check-in. Sem esse envio, o acesso ao imóvel poderá ser negado.*\n\n🛎️ Um dia antes da sua estadia, às 20h, você receberá aqui pelo chat todas as instruções de acesso e outras informações úteis.\n\n🕐 Nosso horário de atendimento é das 8h00 às 21h00.\n\nAté logo, ${primeiroNome}! 👋`;\n\nreturn [{ json: { telefone, mensagem } }];"
+      },
+      "id": "code-montar-payload-evolution-0001",
+      "name": "Code: Montar Payload Evolution (Confirmação)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2704, -1600]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://seu-dominio-evolution.com/message/sendText/SUA_INSTANCIA",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "apikey", "value": "SUA-API-KEY-AQUI" }] },
+        "sendBody": true,
+        "bodyParameters": { "parameters": [
+          { "name": "number", "value": "={{ $json.telefone }}" },
+          { "name": "text", "value": "={{ $json.mensagem }}" },
+          { "name": "delay", "value": "={{ 3000 }}" }
+        ] },
+        "options": {}
+      },
+      "id": "http-evolution-send-0001",
+      "name": "HTTP: Evolution Send (Confirmação)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [2928, -1600]
+    },
+    {
+      "parameters": {
+        "jsCode": "const log = $('Code: Montar Linha Nova').first().json;\n\nconst primeiroNome = (log.hospede_nome || '').split(' ')[0];\nconst telefone = (log.hospede_id || '').replace('+', '');\n\nfunction formatarData(str) {\n  const d = new Date(str);\n  return d.toLocaleDateString('pt-BR', { timeZone: 'UTC' });\n}\nconst dataCheckin  = formatarData(log.data_checkin);\nconst dataCheckout = formatarData(log.data_checkout);\n\nconst mensagem = `Olá ${primeiroNome}!\n\nRecebemos sua solicitação de reserva e realizamos uma pré-reserva.\n\n🏠 *Unidade:* ${log.unidade_nome}\n📅 *Check-in:* ${dataCheckin}\n📅 *Check-out:* ${dataCheckout}\n🎟️ *Código da pré-reserva:* ${log.reserva_id}\n\nNeste momento, a hospedagem ainda não está confirmada. A confirmação ocorrerá somente após a identificação do pagamento.\n\nA pré-reserva permanecerá válida por até 24 horas. Após esse prazo, ou caso outro interessado conclua uma reserva para o mesmo período, as datas poderão ser liberadas automaticamente.\n\nCaso seu check-in esteja previsto para hoje, o acesso à acomodação somente poderá ser liberado após a confirmação do pagamento.\n\nSegue abaixo nossos dados para pagamento:\n\n🏦 *Banco:* [SEU BANCO]\n*Agência:* [SUA AGÊNCIA]\n*Conta Corrente:* [SUA CONTA]\n\n🔑 *Chave PIX:* [SUA CHAVE PIX]\n\n*CNPJ:* [SEU CNPJ]\n*Nome:* [NOME DA EMPRESA]\n\nApós realizar o pagamento, por favor, envie o comprovante por este canal para que possamos concluir a confirmação da sua hospedagem.\n\nPermanecemos à disposição em caso de dúvidas.\n\nAtenciosamente,\nEquipe [NOME DA EMPRESA].`;\n\nreturn [{ json: { telefone, mensagem } }];"
+      },
+      "id": "code-montar-msg-prereserva-0001",
+      "name": "Code: Montar Msg PreReserva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [880, -1088]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://seu-dominio-evolution.com/message/sendText/SUA_INSTANCIA",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "apikey", "value": "SUA-API-KEY-AQUI" }] },
+        "sendBody": true,
+        "bodyParameters": { "parameters": [
+          { "name": "number", "value": "={{ $json.telefone }}" },
+          { "name": "text", "value": "={{ $json.mensagem }}" },
+          { "name": "delay", "value": "={{ 3000 }}" }
+        ] },
+        "options": {}
+      },
+      "id": "http-evolution-prereserva-0001",
+      "name": "HTTP: Evolution Send (PreReserva)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1104, -1088]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "CAD_UNIDADES_STAYS", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "_idlisting", "lookupValue": "={{ $json.idlisting }}" }] },
+        "options": {}
+      },
+      "id": "sheets-unidade-modified-0001",
+      "name": "Sheets: Buscar Unidade (Modified)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-112, -656],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } },
+      "continueOnFail": true
+    },
+    {
+      "parameters": { "amount": 4 },
+      "id": "wait-0001",
+      "name": "Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [80, -656]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "_id", "lookupValue": "={{ $('Switch: Roteamento').item.json._id }}" }] },
+        "options": {}
+      },
+      "id": "sheets-buscar-log-antigo-0001",
+      "name": "Sheets: Buscar LOG Antigo",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [272, -656],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "data_checkout": "={{ $('Switch: Roteamento').item.json.checkOut }}",
+            "ultima_atualizacao": "={{ $now.format('dd/MM/yyyy HH:mm:ss') }}",
+            "unidade_nome": "={{ $('Sheets: Buscar Unidade (Modified)').item.json.unidade_nome }}",
+            "data_checkin": "={{ $('Switch: Roteamento').item.json.checkIn }}",
+            "hospede_qtd": "={{ $('Switch: Roteamento').item.json.guests }}",
+            "_id": "={{ $('Switch: Roteamento').item.json._id }}",
+            "status": "={{ $('Code: Parse Payload').item.json.newStatus }}",
+            "valor_total": "={{ $('Code: Parse Payload').item.json.price }}",
+            "reserva_id": "={{ $('Switch: Roteamento').item.json.reservaId }}",
+            "hora_limpeza_agendada": "={{ $('Sheets: Buscar Unidade (Modified)').item.json.hora_limpeza }}",
+            "equipe_id": "={{ $('Sheets: Buscar Unidade (Modified)').item.json.equipe_id }}"
+          },
+          "matchingColumns": ["_id"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-update-reserva-modified-0001",
+      "name": "Sheets: Update Reserva (Modified)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [448, -656],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [
+            { "id": "cond-pre", "leftValue": "={{ $('Sheets: Buscar LOG Antigo').item.json.status }}", "rightValue": "pre", "operator": { "type": "string", "operation": "equals" } },
+            { "id": "cond-reservado", "leftValue": "={{ $('Code: Parse Payload').item.json.newStatus }}", "rightValue": "reservado", "operator": { "type": "string", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-pre-reserva-0001",
+      "name": "IF: Pre/Reserva",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [624, -656]
+    },
+    {
+      "parameters": {
+        "jsCode": "const parsed  = $('Code: Parse Payload').first().json;\nconst unidade = $('Sheets: Buscar Unidade (Modified)').first().json || {};\n\nconst unidadeNome = unidade.unidade_nome || parsed.idlisting;\nconst equipeId    = unidade.equipe_id    || '';\nconst horaLimpeza = unidade.hora_limpeza || '';\n\nreturn [{ json: {\n  reserva_id:            parsed.reservaId,\n  unidade_nome:          unidadeNome,\n  data_checkin:          parsed.checkIn,\n  data_checkout:         parsed.checkOut,\n  atencao:               '',\n  hora_limpeza_agendada: horaLimpeza,\n  equipe_id:             equipeId,\n  status:                parsed.newStatus,\n  hospede_nome:          parsed.hospedeName,\n  hospede_id:            parsed.hospedeFone,\n  hospede_qtd:           parsed.guests,\n  cod_canal:             parsed.codCanal,\n  canal:                 parsed.canal,\n  valor_total:           parsed.price,\n  hora_checkin:          unidade.hora_checkin  || '',\n  hora_checkout:         unidade.hora_checkout || '',\n  criado_em:             parsed.now,\n  ultima_atualizacao:    parsed.now,\n  _id:                   parsed._id\n} }];"
+      },
+      "id": "montar-prereserva-0001",
+      "name": "Montar PreReserva",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, -912]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "reserva_id", "lookupValue": "={{ $json.reserva_id }}" }] },
+        "options": {}
+      },
+      "id": "sheets-buscar-reserva-calendar-0001",
+      "name": "Sheets: Buscar Reserva (Calendar)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [800, -640],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [{ "id": "cond-tem-event", "leftValue": "={{ $('Sheets: Buscar Reserva (Calendar)').item.json.event_id_checkin }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty", "singleValue": true } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-tem-event-0001",
+      "name": "If: Tem Evento no Calendário",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [976, -640]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-HOSPEDES@group.calendar.google.com", "mode": "list", "cachedResultName": "Cadastro Hóspedes" },
+        "eventId": "={{ $json.event_id_checkin }}",
+        "options": {}
+      },
+      "id": "calendar-get-checkin-0001",
+      "name": "Calendar: Get Checkin",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [1184, -656],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-HOSPEDES@group.calendar.google.com", "mode": "list", "cachedResultName": "Cadastro Hóspedes" },
+        "eventId": "={{ $json.id }}",
+        "updateFields": {
+          "allday": "yes",
+          "description": "=Unidade atualizada: {{ $('Sheets: Buscar Reserva (Calendar)').item.json.unidade_nome }}\n{{ $json.description }}",
+          "end": "={{ $('Sheets: Buscar Reserva (Calendar)').item.json.data_checkin }}",
+          "start": "={{ $('Sheets: Buscar Reserva (Calendar)').item.json.data_checkin }}",
+          "summary": "={{ ($('Sheets: Buscar Reserva (Calendar)').item.json.canal || '').toLowerCase().includes('airbnb') ? 'A' : ($('Sheets: Buscar Reserva (Calendar)').item.json.canal || '').toLowerCase().includes('booking') ? 'B' : 'O' }} 🏠 Onboarding | {{ $('Sheets: Buscar Reserva (Calendar)').item.json.unidade_nome }} | {{ $('Sheets: Buscar Reserva (Calendar)').item.json.reserva_id }} | {{ $('Sheets: Buscar Reserva (Calendar)').item.json.hospede_nome }}"
+        }
+      },
+      "id": "calendar-update-checkin-0001",
+      "name": "Calendar: Update Checkin",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [1360, -656],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-LIMPEZA@group.calendar.google.com", "mode": "list", "cachedResultName": "Limpeza Tarefas" },
+        "eventId": "={{ $('Sheets: Buscar Reserva (Calendar)').item.json.event_id_checkout }}",
+        "updateFields": {
+          "allday": "yes",
+          "description": "=🧹 Prestador: {{ $('Sheets: Buscar Reserva (Calendar)').item.json.equipe_id }}\n🏠 Unidade: {{ $('Sheets: Buscar Reserva (Calendar)').item.json.unidade_nome }}\n📅 Data da Limpeza: {{ DateTime.fromISO($('Sheets: Buscar Reserva (Calendar)').item.json.data_checkout).setLocale('pt-BR').toFormat('dd \\'de\\' MMM \\'de\\' yyyy') }}\n🕗 Horário: {{ $('Sheets: Buscar Reserva (Calendar)').item.json.hora_limpeza_agendada }}\n📞 WhatsApp Prestador: https://wa.me/{{ $('Sheets: Buscar Reserva (Calendar)').item.json.equipe_id }}\n\n{{ ($('Sheets: Buscar Reserva (Calendar)').item.json.atencao && $('Sheets: Buscar Reserva (Calendar)').item.json.atencao !== \"\") ? \"⚠️ ATENÇÃO: Limpeza com turnover!\" : \"\" }}",
+          "end": "={{ $('Sheets: Buscar Reserva (Calendar)').item.json.data_checkout }}",
+          "start": "={{ $('Sheets: Buscar Reserva (Calendar)').item.json.data_checkout }}",
+          "summary": "={{ ($('Sheets: Buscar Reserva (Calendar)').item.json.atencao && $('Sheets: Buscar Reserva (Calendar)').item.json.atencao !== '') ? '⚠️ ' : '' }}🧹 Limpeza | {{ $('Sheets: Buscar Reserva (Calendar)').item.json.unidade_nome }} | {{ $('Sheets: Buscar Reserva (Calendar)').item.json.reserva_id }} | {{ $('Sheets: Buscar Reserva (Calendar)').item.json.hospede_nome }}"
+        }
+      },
+      "id": "calendar-update-checkout-0001",
+      "name": "Calendar: Update Checkout",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [1520, -656],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// Avalia se a alteração deve disparar o alerta em tempo real pro prestador\n// Critérios: data antiga era hoje (SP), data nova !== hoje (SP),\n//            hora SP estritamente entre 07:00 e 16:00\n// =============================================================\n\nvar logAntigo = $('Sheets: Buscar LOG Antigo').item.json;\nvar parsed    = $('Code: Parse Payload').item.json;\n\nfunction nowSP() {\n  var s = new Date().toLocaleString('en-US', {\n    timeZone: 'America/Sao_Paulo',\n    year: 'numeric', month: '2-digit', day: '2-digit',\n    hour: '2-digit', minute: '2-digit', second: '2-digit',\n    hour12: false\n  });\n  var m = s.match(/(\\d{1,2})\\/(\\d{1,2})\\/(\\d{4}),?\\s+(\\d{1,2}):(\\d{2}):(\\d{2})/);\n  if (!m) return new Date();\n  return new Date(parseInt(m[3]), parseInt(m[1]) - 1, parseInt(m[2]),\n                  parseInt(m[4]), parseInt(m[5]), parseInt(m[6]));\n}\n\nfunction pad2(n) { return n < 10 ? '0' + n : '' + n; }\nfunction isoLocal(d) {\n  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());\n}\nfunction norm(d) { return String(d || '').slice(0, 10); }\n\nvar agoraSP = nowSP();\nvar hojeStr = isoLocal(new Date(agoraSP.getFullYear(), agoraSP.getMonth(), agoraSP.getDate()));\n\nvar dataAntiga = norm(logAntigo.data_checkout);\nvar dataNova   = norm(parsed.checkOut);\n\nvar horaSP     = agoraSP.getHours() * 60 + agoraSP.getMinutes();\nvar dentroJanela = horaSP >= (7 * 60) && horaSP < (16 * 60);\n\nvar disparar = (dataAntiga === hojeStr)\n            && (dataNova !== hojeStr)\n            && dentroJanela;\n\nreturn [{\n  json: {\n    disparar_alerta_realtime: disparar,\n    equipe_id:     String(logAntigo.equipe_id || '').trim()\n  }\n}];"
+      },
+      "id": "code-avaliar-disparo-0001",
+      "name": "Code: Avaliar Disparo Alerta Real-time",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1728, -656]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [{ "id": "cond-disparar", "leftValue": "={{ $json.disparar_alerta_realtime }}", "rightValue": false, "operator": { "type": "boolean", "operation": "true", "singleValue": true } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-dispara-alerta-0001",
+      "name": "If: Dispara Alerta Real-time",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [1936, -656]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "SEU-WORKFLOW-ID-ALTERACAO-CRITICA", "mode": "list", "cachedResultName": "Sub-workflow: Alerta Real-time de Alteração Crítica" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": {}, "matchingColumns": [], "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": true },
+        "mode": "each",
+        "options": {}
+      },
+      "id": "call-alerta-realtime-0001",
+      "name": "Call: Sub-workflow Alerta Real-time",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [2160, -704]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [{ "id": "cond-nao-bloqueado-mod", "leftValue": "={{ $('Sheets: Buscar Reserva (Calendar)').item.json.status }}", "rightValue": "bloqueado", "operator": { "type": "string", "operation": "notEquals" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-nao-bloqueado-modified-0001",
+      "name": "IF: Não é Bloqueado (Modified)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [2320, -496]
+    },
+    {
+      "parameters": {
+        "jsCode": "const log = $('Sheets: Buscar Reserva (Calendar)').first().json;\n\nreturn [{\n  json: {\n    reserva_id:   log.reserva_id,\n    unidade_nome: log.unidade_nome,\n    data_checkin: log.data_checkin,\n    data_checkout: log.data_checkout,\n    _id:          log._id\n  }\n}];"
+      },
+      "id": "code-montar-payload-atencao-0001",
+      "name": "Code: Montar Payload Atenção/Conflito",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2544, -704]
+    },
+    {
+      "parameters": {
+        "workflowId": { "__rl": true, "value": "SEU-WORKFLOW-ID-CONFLITO", "mode": "list", "cachedResultName": "Sub-workflow: Detecção de Conflito de Agenda" },
+        "workflowInputs": { "mappingMode": "defineBelow", "value": {}, "matchingColumns": [], "schema": [], "attemptToConvertTypes": false, "convertFieldsToString": true },
+        "mode": "each",
+        "options": {}
+      },
+      "id": "call-conflito-0001",
+      "name": "Call: Sub-workflow Detecção de Conflito",
+      "type": "n8n-nodes-base.executeWorkflow",
+      "typeVersion": 1.3,
+      "position": [2848, -704]
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "_id", "lookupValue": "={{ $json._id }}" }] },
+        "options": {}
+      },
+      "id": "sheets-buscar-reserva-deleted-0001",
+      "name": "Sheets: Buscar Reserva (Deleted)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [-96, -416],
+      "alwaysOutputData": false,
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "startIndex": "={{ $json.row_number }}"
+      },
+      "id": "sheets-deletar-reserva-0001",
+      "name": "Sheets: Deletar Reserva",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [128, -416],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict", "version": 3 },
+          "conditions": [{ "id": "cond-nao-bloqueado-del", "leftValue": "={{ $('Sheets: Buscar Reserva (Deleted)').item.json.status }}", "rightValue": "bloqueado", "operator": { "type": "string", "operation": "notEquals" } }],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-nao-bloqueado-deleted-0001",
+      "name": "IF: Não é Bloqueado (Deleted)",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [352, -416]
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-HOSPEDES@group.calendar.google.com", "mode": "list", "cachedResultName": "Cadastro Hóspedes" },
+        "eventId": "={{ $('Sheets: Buscar Reserva (Deleted)').item.json.event_id_checkin }}",
+        "options": {}
+      },
+      "id": "calendar-delete-checkin-deleted-0001",
+      "name": "Calendar: Delete Checkin (Deleted)",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [592, -432],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-LIMPEZA@group.calendar.google.com", "mode": "list", "cachedResultName": "Limpeza Tarefas" },
+        "eventId": "={{ $('Sheets: Buscar Reserva (Deleted)').item.json.event_id_checkout }}",
+        "options": {}
+      },
+      "id": "calendar-delete-checkout-deleted-0001",
+      "name": "Calendar: Delete Checkout (Deleted)",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [800, -432],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": { "_id": "={{ $json._id }}", "status": "={{ $json.newStatus }}", "status_onboarding": "cancelado", "token_consumido": "TRUE" },
+          "matchingColumns": ["_id"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-update-reserva-canceled-0001",
+      "name": "Sheets: Update Reserva (Canceled)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.5,
+      "position": [-96, -224],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "filtersUI": { "values": [{ "lookupColumn": "_id", "lookupValue": "={{ $('Switch: Roteamento').item.json._id }}" }] },
+        "options": {}
+      },
+      "id": "sheets-buscar-reserva-canceled-0001",
+      "name": "Sheets: Buscar Reserva (Canceled)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [128, -224],
+      "alwaysOutputData": false,
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-HOSPEDES@group.calendar.google.com", "mode": "list", "cachedResultName": "Cadastro Hóspedes" },
+        "eventId": "={{ $json.event_id_checkin }}",
+        "options": {}
+      },
+      "id": "calendar-delete-checkin-canceled-0001",
+      "name": "Calendar: Delete Checkin (Canceled)",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [352, -224],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": {
+        "operation": "delete",
+        "calendar": { "__rl": true, "value": "SEU-CALENDAR-ID-LIMPEZA@group.calendar.google.com", "mode": "list", "cachedResultName": "Limpeza Tarefas" },
+        "eventId": "={{ $('Sheets: Buscar Reserva (Canceled)').item.json.event_id_checkout }}",
+        "options": {}
+      },
+      "id": "calendar-delete-checkout-canceled-0001",
+      "name": "Calendar: Delete Checkout (Canceled)",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [576, -224],
+      "credentials": { "googleCalendarOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_CALENDAR" } }
+    },
+    {
+      "parameters": {
+        "operation": "update",
+        "documentId": { "__rl": true, "value": "SUA-PLANILHA-ID-AQUI", "mode": "id" },
+        "sheetName": { "__rl": true, "value": "LOG_TAREFAS_STAYS", "mode": "name" },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "reserva_id": "={{ $('Sheets: Buscar Reserva (Canceled)').item.json.reserva_id }}",
+            "event_id_checkin": "={{ \"\" }}",
+            "event_id_checkout": "={{ \"\" }}",
+            "ultima_atualizacao": "={{ $now.format('dd/MM/yyyy HH:mm:ss') }}"
+          },
+          "matchingColumns": ["reserva_id"],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "sheets-update-reserva-calendar-0001",
+      "name": "Sheets: Update Reserva (Limpar Event IDs)",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [800, -224],
+      "credentials": { "googleSheetsOAuth2Api": { "id": "SUA-CREDENCIAL-AQUI", "name": "SUA_CONTA_GOOGLE" } }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Pega os dados da reserva cancelada\nconst reserva = $('Sheets: Buscar Reserva (Canceled)').first().json;\n\n// Telefone do hospede (ja vem no formato WhatsApp: 55 + DDD + numero)\nconst numero = String(reserva.hospede_id);\n\nconst texto = `Poxa, vimos que você cancelou sua reserva. Que pena! ✨\n\nEntendemos perfeitamente, estaremos sempre por aqui caso precise de algo ou decida fazer uma nova reserva no futuro.\n\nEsperamos poder recebê-lo(a) em breve! 👋`;\n\nreturn [{ json: { number: numero, text: texto } }];"
+      },
+      "id": "code-montar-payload-cancelamento-0001",
+      "name": "Code: Montar Payload Evolution (Cancelamento)",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1024, -224]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://seu-dominio-evolution.com/message/sendText/SUA_INSTANCIA",
+        "sendHeaders": true,
+        "headerParameters": { "parameters": [{ "name": "apikey", "value": "SUA-API-KEY-AQUI" }] },
+        "sendBody": true,
+        "bodyParameters": { "parameters": [
+          { "name": "number", "value": "={{ $json.number }}" },
+          { "name": "text", "value": "={{ $json.text }}" },
+          { "name": "delay", "value": "={{ 3000 }}" }
+        ] },
+        "options": {}
+      },
+      "id": "http-evolution-cancelamento-0001",
+      "name": "HTTP: Evolution Send (Cancelamento)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [1264, -224]
+    }
+  ],
+  "connections": {
+    "Webhook: Recebe Stays": { "main": [[{ "node": "Code: Parse Payload", "type": "main", "index": 0 }]] },
+    "Code: Parse Payload": { "main": [[{ "node": "IF: Ignorar", "type": "main", "index": 0 }]] },
+    "IF: Ignorar": { "main": [[{ "node": "Switch: Roteamento", "type": "main", "index": 0 }]] },
+    "Switch: Roteamento": {
+      "main": [
+        [{ "node": "Sheets: Buscar Unidade (Created)", "type": "main", "index": 0 }],
+        [{ "node": "Sheets: Buscar Unidade (Modified)", "type": "main", "index": 0 }],
+        [{ "node": "Sheets: Buscar Reserva (Deleted)", "type": "main", "index": 0 }],
+        [{ "node": "Sheets: Update Reserva (Canceled)", "type": "main", "index": 0 }],
+        [],
+        []
+      ]
+    },
+    "Sheets: Buscar Unidade (Created)": { "main": [[{ "node": "Code: Montar Linha Nova", "type": "main", "index": 0 }]] },
+    "Code: Montar Linha Nova": { "main": [[{ "node": "Sheets: Append LOG", "type": "main", "index": 0 }]] },
+    "Sheets: Append LOG": { "main": [[{ "node": "Switch: Status (Created)", "type": "main", "index": 0 }]] },
+    "Switch: Status (Created)": {
+      "main": [
+        [{ "node": "Calendar: Create Checkin", "type": "main", "index": 0 }],
+        [{ "node": "Code: Montar Msg PreReserva", "type": "main", "index": 0 }]
+      ]
+    },
+    "Calendar: Create Checkin": { "main": [[{ "node": "Code: Captura Checkin ID", "type": "main", "index": 0 }]] },
+    "Code: Captura Checkin ID": { "main": [[{ "node": "Calendar: Create Checkout", "type": "main", "index": 0 }]] },
+    "Calendar: Create Checkout": { "main": [[{ "node": "Code: Captura Checkout ID", "type": "main", "index": 0 }]] },
+    "Code: Captura Checkout ID": { "main": [[{ "node": "Sheets: Update Event IDs", "type": "main", "index": 0 }]] },
+    "Sheets: Update Event IDs": { "main": [[{ "node": "IF: Canal não é Airbnb", "type": "main", "index": 0 }]] },
+    "IF: Canal não é Airbnb": {
+      "main": [
+        [{ "node": "Code: Gerar Token Onboarding (não-Airbnb)", "type": "main", "index": 0 }],
+        [{ "node": "Code: Gerar Token Onboarding (Airbnb)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Code: Gerar Token Onboarding (não-Airbnb)": { "main": [[{ "node": "Sheets: Update LOG Onboarding", "type": "main", "index": 0 }]] },
+    "Sheets: Update LOG Onboarding": { "main": [[{ "node": "Code: Montar Payload Evolution (Confirmação)", "type": "main", "index": 0 }]] },
+    "Code: Montar Payload Evolution (Confirmação)": { "main": [[{ "node": "HTTP: Evolution Send (Confirmação)", "type": "main", "index": 0 }]] },
+    "Code: Montar Msg PreReserva": { "main": [[{ "node": "HTTP: Evolution Send (PreReserva)", "type": "main", "index": 0 }]] },
+    "Sheets: Buscar Unidade (Modified)": { "main": [[{ "node": "Wait", "type": "main", "index": 0 }]] },
+    "Wait": { "main": [[{ "node": "Sheets: Buscar LOG Antigo", "type": "main", "index": 0 }]] },
+    "Sheets: Buscar LOG Antigo": { "main": [[{ "node": "Sheets: Update Reserva (Modified)", "type": "main", "index": 0 }]] },
+    "Sheets: Update Reserva (Modified)": { "main": [[{ "node": "IF: Pre/Reserva", "type": "main", "index": 0 }]] },
+    "IF: Pre/Reserva": {
+      "main": [
+        [{ "node": "Montar PreReserva", "type": "main", "index": 0 }],
+        [{ "node": "Sheets: Buscar Reserva (Calendar)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Sheets: Buscar Reserva (Calendar)": { "main": [[{ "node": "If: Tem Evento no Calendário", "type": "main", "index": 0 }]] },
+    "If: Tem Evento no Calendário": { "main": [[{ "node": "Calendar: Get Checkin", "type": "main", "index": 0 }]] },
+    "Calendar: Get Checkin": { "main": [[{ "node": "Calendar: Update Checkin", "type": "main", "index": 0 }]] },
+    "Calendar: Update Checkin": { "main": [[{ "node": "Calendar: Update Checkout", "type": "main", "index": 0 }]] },
+    "Calendar: Update Checkout": { "main": [[{ "node": "Code: Avaliar Disparo Alerta Real-time", "type": "main", "index": 0 }]] },
+    "Code: Avaliar Disparo Alerta Real-time": { "main": [[{ "node": "If: Dispara Alerta Real-time", "type": "main", "index": 0 }]] },
+    "If: Dispara Alerta Real-time": {
+      "main": [
+        [{ "node": "Call: Sub-workflow Alerta Real-time", "type": "main", "index": 0 }],
+        [{ "node": "IF: Não é Bloqueado (Modified)", "type": "main", "index": 0 }]
+      ]
+    },
+    "Call: Sub-workflow Alerta Real-time": { "main": [[{ "node": "Code: Montar Payload Atenção/Conflito", "type": "main", "index": 0 }]] },
+    "IF: Não é Bloqueado (Modified)": { "main": [[{ "node": "Code: Montar Payload Atenção/Conflito", "type": "main", "index": 0 }]] },
+    "Code: Montar Payload Atenção/Conflito": { "main": [[{ "node": "Call: Sub-workflow Detecção de Conflito", "type": "main", "index": 0 }]] },
+    "Sheets: Buscar Reserva (Deleted)": { "main": [[{ "node": "Sheets: Deletar Reserva", "type": "main", "index": 0 }]] },
+    "Sheets: Deletar Reserva": { "main": [[{ "node": "IF: Não é Bloqueado (Deleted)", "type": "main", "index": 0 }]] },
+    "IF: Não é Bloqueado (Deleted)": { "main": [[{ "node": "Calendar: Delete Checkin (Deleted)", "type": "main", "index": 0 }]] },
+    "Calendar: Delete Checkin (Deleted)": { "main": [[{ "node": "Calendar: Delete Checkout (Deleted)", "type": "main", "index": 0 }]] },
+    "Sheets: Update Reserva (Canceled)": { "main": [[{ "node": "Sheets: Buscar Reserva (Canceled)", "type": "main", "index": 0 }]] },
+    "Sheets: Buscar Reserva (Canceled)": { "main": [[{ "node": "Calendar: Delete Checkin (Canceled)", "type": "main", "index": 0 }]] },
+    "Calendar: Delete Checkin (Canceled)": { "main": [[{ "node": "Calendar: Delete Checkout (Canceled)", "type": "main", "index": 0 }]] },
+    "Calendar: Delete Checkout (Canceled)": { "main": [[{ "node": "Sheets: Update Reserva (Limpar Event IDs)", "type": "main", "index": 0 }]] },
+    "Sheets: Update Reserva (Limpar Event IDs)": { "main": [[{ "node": "Code: Montar Payload Evolution (Cancelamento)", "type": "main", "index": 0 }]] },
+    "Code: Montar Payload Evolution (Cancelamento)": { "main": [[{ "node": "HTTP: Evolution Send (Cancelamento)", "type": "main", "index": 0 }]] }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "SEU-INSTANCE-ID-AQUI"
+  }
+}

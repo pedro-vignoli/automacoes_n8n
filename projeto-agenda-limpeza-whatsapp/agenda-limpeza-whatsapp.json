@@ -1,0 +1,318 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "s1",
+              "name": "gerente1_telefone",
+              "value": "SEU-NUMERO-1-AQUI",
+              "type": "string"
+            },
+            {
+              "id": "s2",
+              "name": "gerente2_telefone",
+              "value": "SEU-NUMERO-2-AQUI",
+              "type": "string"
+            },
+            {
+              "id": "s3",
+              "name": "rotas_copia_json",
+              "value": "{\"NUMERO-PRESTADOR-1\":\"NUMERO-COPIA-1\",\"NUMERO-PRESTADOR-2\":\"NUMERO-COPIA-2\"}",
+              "type": "string"
+            },
+            {
+              "id": "s4",
+              "name": "delay_ms",
+              "value": 1000,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "config-0001",
+      "name": "Set: Config",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1184,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 2
+          },
+          "conditions": [
+            {
+              "id": "c1",
+              "leftValue": "={{ $json.vazio }}",
+              "rightValue": "",
+              "operator": {
+                "type": "object",
+                "operation": "notExists",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "filter-0001",
+      "name": "Filter: Há Mensagens?",
+      "type": "n8n-nodes-base.filter",
+      "typeVersion": 2.2,
+      "position": [
+        -320,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "SUA-PLANILHA-ID-AQUI",
+          "mode": "list",
+          "cachedResultName": "Gestão de Limpeza",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SUA-PLANILHA-ID-AQUI/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "CAD_UNIDADES",
+          "mode": "list",
+          "cachedResultName": "CAD_UNIDADES",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SUA-PLANILHA-ID-AQUI/edit"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -976,
+        768
+      ],
+      "id": "sheets-cad-0001",
+      "name": "Sheets: Ler CAD1",
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "SUA-CREDENCIAL-AQUI",
+          "name": "SUA_CONTA_GOOGLE"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "SUA-PLANILHA-ID-AQUI",
+          "mode": "list",
+          "cachedResultName": "Gestão de Limpeza",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SUA-PLANILHA-ID-AQUI/edit"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": "LOG_TAREFAS",
+          "mode": "list",
+          "cachedResultName": "LOG_TAREFAS",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/SUA-PLANILHA-ID-AQUI/edit"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        -768,
+        768
+      ],
+      "id": "sheets-log-0001",
+      "name": "Sheets: Ler LOG1",
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "SUA-CREDENCIAL-AQUI",
+          "name": "SUA_CONTA_GOOGLE"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// =============================================================\n// Filtra LOG_TAREFAS e monta mensagens por prestador\n// - Janela: data_checkout === amanhã (D+1 apenas)\n// - status_tarefa === 'reservado'\n// - Agrupa por equipe_id (telefone)\n// - Ordena tarefas cronologicamente\n// - Gera 1 item por mensagem (prestador + gerentes + cópia se houver)\n// - Cabeçalho personalizado com nome do prestador (lookup em CAD_UNIDADES)\n// =============================================================\n\nvar config = $('Set: Config').first().json;\nvar GERENTE1 = String(config.gerente1_telefone || '').trim();\nvar GERENTE2 = String(config.gerente2_telefone || '').trim();\n\nvar ROTAS_COPIA = {};\ntry {\n  ROTAS_COPIA = JSON.parse(config.rotas_copia_json || '{}');\n} catch (e) {\n  ROTAS_COPIA = {};\n}\n\n// === Mapa de nomes dos prestadores (a partir do CAD) ===\nvar MAPA_NOMES = {};\nvar cadRows = $('Sheets: Ler CAD1').all().map(function(i) { return i.json; });\nfor (var i = 0; i < cadRows.length; i++) {\n  var eid = String(cadRows[i].equipe_id || '').trim();\n  if (eid && !MAPA_NOMES[eid]) {\n    MAPA_NOMES[eid] = String(cadRows[i].equipe_nome || '').trim();\n  }\n}\n\nvar rows = $('Sheets: Ler LOG1').all().map(function(i) { return i.json; });\n\n// === Janela de datas: apenas D+1 ===\nvar hoje = new Date();\nhoje.setHours(0, 0, 0, 0);\n\nvar amanha = new Date(hoje);\namanha.setDate(amanha.getDate() + 1);\n\nfunction pad2(n) { return n < 10 ? '0' + n : '' + n; }\nfunction isoLocal(d) {\n  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());\n}\n\nvar amanhaStr = isoLocal(amanha);\n\n// === Helpers ===\nfunction norm(d) { return String(d || '').slice(0, 10); }\n\nfunction getAtencao(r) {\n  if (r['atenção'] !== undefined && r['atenção'] !== null) return r['atenção'];\n  if (r['atencao'] !== undefined && r['atencao'] !== null) return r['atencao'];\n  return '';\n}\n\nfunction formatarDataCurta(iso) {\n  var s = norm(iso);\n  if (!s || s.length < 10) return s;\n  return s.slice(8, 10) + '/' + s.slice(5, 7);\n}\n\nfunction diaSemanaAbrev(iso) {\n  var dias = ['Dom', 'Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb'];\n  var s = norm(iso);\n  if (!s || s.length < 10) return '';\n  var d = new Date(s + 'T12:00:00Z');\n  if (isNaN(d.getTime())) return '';\n  return dias[d.getUTCDay()] || '';\n}\n\n// === Filtrar elegíveis: apenas amanhã ===\nvar elegiveis = [];\nfor (var i2 = 0; i2 < rows.length; i2++) {\n  var r = rows[i2];\n  if (String(r.status_tarefa || '').toLowerCase() !== 'reservado') continue;\n  if (!r.data_checkout) continue;\n  if (!r.equipe_id) continue;\n\n  var dataStr = norm(r.data_checkout);\n  if (dataStr.length < 10) continue;\n  if (dataStr !== amanhaStr) continue;\n\n  elegiveis.push(r);\n}\n\n// === Agrupar por prestador ===\nvar porPrestador = {};\nfor (var j = 0; j < elegiveis.length; j++) {\n  var t = elegiveis[j];\n  var key = String(t.equipe_id).trim();\n  if (!key) continue;\n  if (!porPrestador[key]) porPrestador[key] = [];\n  porPrestador[key].push(t);\n}\n\n// === Montar mensagens ===\nvar mensagens = [];\nvar prestadores = Object.keys(porPrestador);\n\nfor (var k = 0; k < prestadores.length; k++) {\n  var prestador = prestadores[k];\n  var tarefas = porPrestador[prestador];\n  var nomePrestador = MAPA_NOMES[prestador] || '';\n\n  tarefas.sort(function(a, b) {\n    return norm(a.data_checkout).localeCompare(norm(b.data_checkout));\n  });\n\n  var temAtencao = false;\n  for (var l = 0; l < tarefas.length; l++) {\n    if (String(getAtencao(tarefas[l])).trim() !== '') {\n      temAtencao = true;\n      break;\n    }\n  }\n\n  var cabecalho = nomePrestador\n    ? '*AGENDA DE AMANHÃ — ' + nomePrestador + '*\\n'\n    : '*AGENDA DE AMANHÃ*\\n';\n\n  var texto = cabecalho;\n  texto += 'Suas tarefas de limpeza para amanhã 🔔:\\n';\n\n  for (var m = 0; m < tarefas.length; m++) {\n    var ta = tarefas[m];\n    var marca = String(getAtencao(ta)).trim() !== '' ? ' ⚠️' : '';\n    texto += '\\n';\n    texto += '🏠 Unidade: ' + (ta.unidade_nome || '') + marca + '\\n';\n    texto += '📅 Data: ' + formatarDataCurta(ta.data_checkout) + ' - ' + diaSemanaAbrev(ta.data_checkout) + '\\n';\n    texto += '⏱️ Horário: ' + (ta.hora_limpeza_agendada || '') + '\\n';\n  }\n\n  if (temAtencao) {\n    texto += '\\nATENÇÃO ⚠️ Unidades com entrada e saída no mesmo dia são prioridades';\n  }\n\n  // 1. Prestador\n  mensagens.push({ json: { numero: prestador, texto: texto, destinatario: 'prestador', equipe_id: prestador } });\n\n  // 2. Gerente 1\n  if (GERENTE1) mensagens.push({ json: { numero: GERENTE1, texto: texto, destinatario: 'gerente_1', equipe_id: prestador } });\n\n  // 3. Gerente 2\n  if (GERENTE2) mensagens.push({ json: { numero: GERENTE2, texto: texto, destinatario: 'gerente_2', equipe_id: prestador } });\n\n  // 4. Cópia adicional roteada\n  if (ROTAS_COPIA[prestador]) {\n    mensagens.push({ json: { numero: ROTAS_COPIA[prestador], texto: texto, destinatario: 'copia_extra', equipe_id: prestador } });\n  }\n}\n\nif (mensagens.length === 0) return [{ json: { vazio: true } }];\nreturn mensagens;"
+      },
+      "id": "code-montar-0001",
+      "name": "Code: Filtrar e Montar Mensagens1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -560,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "id": "loop-0001",
+      "name": "Loop: Por Mensagem1",
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        -96,
+        768
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://SEU-DOMINIO-EVOLUTION-AQUI/message/sendText/SUA-INSTANCIA-AQUI",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "SUA-API-KEY-AQUI"
+            }
+          ]
+        },
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "number",
+              "value": "={{ $json.numero }}"
+            },
+            {
+              "name": "text",
+              "value": "={{ $json.texto }}"
+            },
+            {
+              "name": "delay",
+              "value": "={{3000}}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "http-evolution-0001",
+      "name": "HTTP: Evolution Enviar1",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        144,
+        784
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "var delay = Number($('Set: Config').first().json.delay_ms) || 5000;\nawait new Promise(function(r) { setTimeout(r, delay); });\nreturn $input.all();"
+      },
+      "id": "code-delay-0001",
+      "name": "Code: Delay1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        352,
+        784
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "55 20 * * *"
+            }
+          ]
+        }
+      },
+      "id": "schedule-0001",
+      "name": "Schedule: 20h55",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1376,
+        768
+      ]
+    }
+  ],
+  "connections": {
+    "Set: Config": {
+      "main": [
+        [
+          { "node": "Sheets: Ler CAD1", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Filter: Há Mensagens?": {
+      "main": [
+        [
+          { "node": "Loop: Por Mensagem1", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Sheets: Ler CAD1": {
+      "main": [
+        [
+          { "node": "Sheets: Ler LOG1", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Sheets: Ler LOG1": {
+      "main": [
+        [
+          { "node": "Code: Filtrar e Montar Mensagens1", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Code: Filtrar e Montar Mensagens1": {
+      "main": [
+        [
+          { "node": "Filter: Há Mensagens?", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Loop: Por Mensagem1": {
+      "main": [
+        [],
+        [
+          { "node": "HTTP: Evolution Enviar1", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "HTTP: Evolution Enviar1": {
+      "main": [
+        [
+          { "node": "Code: Delay1", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Code: Delay1": {
+      "main": [
+        [
+          { "node": "Loop: Por Mensagem1", "type": "main", "index": 0 }
+        ]
+      ]
+    },
+    "Schedule: 20h55": {
+      "main": [
+        [
+          { "node": "Set: Config", "type": "main", "index": 0 }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "SEU-INSTANCE-ID-AQUI"
+  }
+}
